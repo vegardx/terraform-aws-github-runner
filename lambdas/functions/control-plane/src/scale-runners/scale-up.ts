@@ -193,6 +193,12 @@ export async function isJobQueued(githubInstallationClient: Octokit, payload: Ac
   // assignment, another queued job may have consumed the runner created
   // for this message. Check if the repo has any queued runs that still
   // need runners.
+  //
+  // NOTE: This check is label-agnostic — it returns true if *any* workflow
+  // run in the repo is queued, even if those runs require different runner
+  // labels. This can cause minor over-scaling in repos with multiple
+  // runner label sets, but avoids under-scaling (missed jobs) which is
+  // the more impactful failure mode.
   logger.info(`Job ${payload.id} is not queued, checking for other queued workflow runs`);
   const queuedRuns = await githubInstallationClient.actions.listWorkflowRunsForRepo({
     owner: payload.repositoryOwner,
