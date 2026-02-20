@@ -3,6 +3,7 @@ import { publishMessage } from '../aws/sqs';
 import { ActionRequestMessage, ActionRequestMessageRetry, isJobQueued, getGitHubEnterpriseApiUrl } from './scale-up';
 import { getOctokit } from '../github/octokit';
 import { MetricUnit } from '@aws-lambda-powertools/metrics';
+import { Octokit } from '@octokit/rest';
 import yn from 'yn';
 
 interface JobRetryConfig {
@@ -63,7 +64,13 @@ export async function checkAndRetryJob(payload: ActionRequestMessageRetry): Prom
   logger.info(`Received event`);
 
   const { ghesApiUrl } = getGitHubEnterpriseApiUrl();
-  const ghClient = await getOctokit(ghesApiUrl, enableOrgLevel, payload);
+  let ghClient: Octokit;
+  if (enterpriseSlug) {
+    const { createEnterprisePATClient } = await import('../github/auth');
+    ghClient = await createEnterprisePATClient(ghesApiUrl);
+  } else {
+    ghClient = await getOctokit(ghesApiUrl, enableOrgLevel, payload);
+  }
 
   // check job is still queued
   if (await isJobQueued(ghClient, payload)) {

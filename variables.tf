@@ -47,6 +47,11 @@ variable "enterprise_pat" {
     }))
   })
   default = null
+
+  validation {
+    condition     = var.enterprise_pat != null || var.enable_enterprise_runners == null
+    error_message = "enterprise_pat is required when enable_enterprise_runners is set."
+  }
 }
 
 variable "github_app" {

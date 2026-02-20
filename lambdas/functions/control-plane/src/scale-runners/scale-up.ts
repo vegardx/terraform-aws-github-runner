@@ -365,9 +365,14 @@ export async function scaleUp(payloads: ActionRequestMessageSQS[]): Promise<stri
     let entry = validMessages.get(key);
 
     if (entry === undefined) {
-      const installationId = await getInstallationId(githubAppClient, enableOrgLevel, payload);
-      const ghAuth = await createGithubInstallationAuth(installationId, ghesApiUrl);
-      const githubInstallationClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
+      let githubInstallationClient: Octokit;
+      if (runnerType === 'Enterprise') {
+        githubInstallationClient = enterprisePATClient!;
+      } else {
+        const installationId = await getInstallationId(githubAppClient, enableOrgLevel, payload);
+        const ghAuth = await createGithubInstallationAuth(installationId, ghesApiUrl);
+        githubInstallationClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
+      }
 
       entry = {
         messages: [],
@@ -500,7 +505,7 @@ export async function scaleUp(payloads: ActionRequestMessageSQS[]): Promise<stri
         scaleErrors,
       },
       newRunners,
-      enterprisePATClient ?? githubInstallationClient,
+      githubInstallationClient,
     );
 
     // Not all runners we wanted were created, let's reject enough items so that
@@ -624,7 +629,7 @@ async function createJitConfig(githubRunnerConfig: CreateGitHubRunnerConfig, ins
     logger.debug(`Runner name: ${ephemeralRunnerConfig.runnerName}`);
     const runnerConfig =
       githubRunnerConfig.runnerType === 'Enterprise'
-        ? await ghClient.request(
+        ? (await ghClient.request(
             'POST /enterprises/{enterprise}/actions/runners/generate-jit-config',
             {
               enterprise: githubRunnerConfig.runnerOwner,
@@ -632,7 +637,7 @@ async function createJitConfig(githubRunnerConfig: CreateGitHubRunnerConfig, ins
               runner_group_id: ephemeralRunnerConfig.runnerGroupId,
               labels: ephemeralRunnerConfig.runnerLabels,
             },
-          )
+          )) as { headers: Record<string, string>; data: { runner: { id: number }; encoded_jit_config: string } }
         : githubRunnerConfig.runnerType === 'Org'
           ? await ghClient.actions.generateRunnerJitconfigForOrg({
               org: githubRunnerConfig.runnerOwner,
