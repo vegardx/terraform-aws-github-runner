@@ -219,15 +219,23 @@ ${decryptedValue}`,
 describe('JWT with jti claim', () => {
   const mockedCreatAppAuth = vi.mocked(createAppAuth);
   const token = '123456';
-  const decryptedValue = 'decryptedValue';
-  const b64 = Buffer.from(decryptedValue, 'binary').toString('base64');
+
+  let rsaPrivateKey: string;
+  let b64Key: string;
+
+  beforeAll(async () => {
+    const { generateKeyPairSync } = await import('node:crypto');
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    rsaPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    b64Key = Buffer.from(rsaPrivateKey).toString('base64');
+  });
 
   beforeEach(() => {
     process.env.ENVIRONMENT = 'dev';
   });
 
   it('passes createJwt callback to createAppAuth', async () => {
-    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64);
+    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64Key);
 
     const mockedAuth = vi.fn();
     mockedAuth.mockResolvedValue({ token });
@@ -243,8 +251,8 @@ describe('JWT with jti claim', () => {
     );
   });
 
-  it('createJwt callback is a function', async () => {
-    let capturedCreateJwt: ((appId: number, timeDifference: number) => Promise<string>) | undefined;
+  it('createJwt callback returns { jwt, expiresAt }', async () => {
+    let capturedCreateJwt: ((appId: number, timeDifference: number) => Promise<{ jwt: string; expiresAt: string }>) | undefined;
     mockedCreatAppAuth.mockImplementation((options: any) => {
       capturedCreateJwt = options.createJwt;
       const mockedAuth = vi.fn();
@@ -252,11 +260,17 @@ describe('JWT with jti claim', () => {
       return Object.assign(mockedAuth, { hook: vi.fn() });
     });
 
-    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64);
+    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64Key);
 
     await createGithubAppAuth(1);
 
     expect(capturedCreateJwt).toBeDefined();
-    expect(typeof capturedCreateJwt).toBe('function');
+    const result = await capturedCreateJwt!(1, 0);
+    expect(result).toHaveProperty('jwt');
+    expect(result).toHaveProperty('expiresAt');
+    expect(typeof result.jwt).toBe('string');
+    expect(result.jwt.split('.')).toHaveLength(3);
+    expect(typeof result.expiresAt).toBe('string');
+    expect(new Date(result.expiresAt).toISOString()).toBe(result.expiresAt);
   });
 });

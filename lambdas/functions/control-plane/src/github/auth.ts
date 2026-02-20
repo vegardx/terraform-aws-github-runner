@@ -16,7 +16,7 @@ type StrategyOptions = {
   privateKey: string;
   installationId?: number;
   request?: RequestInterface;
-  createJwt?: (appId: number, timeDifference: number) => Promise<string>;
+  createJwt?: (appId: number, timeDifference: number) => Promise<{ jwt: string; expiresAt: string }>;
 };
 import { request } from '@octokit/request';
 import { Octokit } from '@octokit/rest';
@@ -27,7 +27,7 @@ import { EndpointDefaults } from '@octokit/types';
 
 const logger = createChildLogger('gh-auth');
 
-function signJwt(appId: number, privateKey: string, timeDifference: number = 0): string {
+function signJwt(appId: number, privateKey: string, timeDifference: number = 0): { jwt: string; expiresAt: string } {
   const now = Math.floor(Date.now() / 1000);
   const iat = now - 30 + timeDifference;
   const exp = iat + 600;
@@ -41,7 +41,10 @@ function signJwt(appId: number, privateKey: string, timeDifference: number = 0):
   signer.update(`${header}.${payload}`);
   const signature = signer.sign(privateKey, 'base64url');
 
-  return `${header}.${payload}.${signature}`;
+  return {
+    jwt: `${header}.${payload}.${signature}`,
+    expiresAt: new Date(exp * 1000).toISOString(),
+  };
 }
 
 export async function createOctokitClient(token: string, ghesApiUrl = ''): Promise<Octokit> {
@@ -58,15 +61,15 @@ export async function createOctokitClient(token: string, ghesApiUrl = ''): Promi
     ...ocktokitOptions,
     userAgent: process.env.USER_AGENT || 'github-aws-runners',
     throttle: {
-      onRateLimit: (retryAfter: number, options: Required<EndpointDefaults>) => {
+      onRateLimit: (retryAfter: number, options: Required<EndpointDefaults>, _octokit: unknown, retryCount: number) => {
         logger.warn(
           `GitHub rate limit: Request quota exhausted for request ${options.method} ${options.url}. Retry after ${retryAfter}s.`,
         );
-        return true;
+        return retryCount < 1;
       },
-      onSecondaryRateLimit: (retryAfter: number, options: Required<EndpointDefaults>) => {
+      onSecondaryRateLimit: (retryAfter: number, options: Required<EndpointDefaults>, _octokit: unknown, retryCount: number) => {
         logger.warn(`GitHub rate limit: SecondaryRateLimit detected for request ${options.method} ${options.url}`);
-        return true;
+        return retryCount < 1;
       },
     },
   });
@@ -100,7 +103,7 @@ async function createAuth(installationId: number | undefined, ghesApiUrl: string
     // processes private keys to retain compatibility between the projects
   )
     .toString()
-    .replace('/[\\n]/g', String.fromCharCode(10));
+    .replace(/\\n/g, '\n');
 
   let authOptions: StrategyOptions = {
     appId,
