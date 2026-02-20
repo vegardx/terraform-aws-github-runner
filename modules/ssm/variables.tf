@@ -50,3 +50,20 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enterprise_pat" {
+  description = "Enterprise PAT with manage_runners:enterprise scope. Provide the value directly or reference an existing SSM parameter."
+  type = object({
+    pat = optional(string)
+    pat_ssm = optional(object({
+      arn  = string
+      name = string
+    }))
+  })
+  default = null
+
+  validation {
+    condition     = var.enterprise_pat == null || (var.enterprise_pat.pat != null || var.enterprise_pat.pat_ssm != null)
+    error_message = "When enterprise_pat is set, provide either `pat` or `pat_ssm`."
+  }
+}

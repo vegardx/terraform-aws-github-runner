@@ -39,6 +39,8 @@ resource "aws_lambda_function" "pool" {
       RUNNER_GROUP_NAME                        = var.config.runner.group_name
       RUNNER_NAME_PREFIX                       = var.config.runner.name_prefix
       RUNNER_OWNER                             = var.config.runner.pool_owner
+      ENABLE_ENTERPRISE_RUNNERS                = var.config.enable_enterprise_runners != null ? var.config.enable_enterprise_runners : ""
+      PARAMETER_ENTERPRISE_PAT_NAME            = var.config.enterprise_pat_parameters != null ? var.config.enterprise_pat_parameters.name : ""
       SSM_TOKEN_PATH                           = var.config.ssm_token_path
       SSM_CONFIG_PATH                          = var.config.ssm_config_path
       SUBNET_IDS                               = join(",", var.config.subnet_ids)
@@ -94,6 +96,7 @@ resource "aws_iam_role_policy" "pool" {
     kms_key_arn                    = var.config.kms_key_arn
     ami_kms_key_arn                = var.config.ami_kms_key_arn
     ssm_ami_id_parameter_arn       = var.config.ami_id_ssm_parameter_arn
+    enterprise_pat_arn             = var.config.enterprise_pat_parameters != null ? var.config.enterprise_pat_parameters.arn : ""
   })
 }
 

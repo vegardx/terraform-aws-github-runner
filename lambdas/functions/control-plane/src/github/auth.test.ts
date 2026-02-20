@@ -5,7 +5,7 @@ import { RequestInterface, RequestParameters } from '@octokit/types';
 import { getParameter } from '@aws-github-runner/aws-ssm-util';
 import * as nock from 'nock';
 
-import { createGithubAppAuth, createOctokitClient } from './auth';
+import { createGithubAppAuth, createOctokitClient, createEnterprisePATClient } from './auth';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 type MockProxy<T> = T & {
@@ -205,5 +205,44 @@ ${decryptedValue}`,
     expect(mockedCreatAppAuth).toBeCalledWith(authOptions);
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
+  });
+});
+
+describe('Test createEnterprisePATClient', () => {
+  const PARAMETER_ENTERPRISE_PAT_NAME = `/actions-runner/${ENVIRONMENT}/enterprise_pat`;
+  const pat = 'ghp_enterprise_pat_token_123';
+
+  beforeEach(() => {
+    process.env.PARAMETER_ENTERPRISE_PAT_NAME = PARAMETER_ENTERPRISE_PAT_NAME;
+    vi.restoreAllMocks();
+  });
+
+  it('Reads PAT from SSM and creates Octokit client for public GitHub', async () => {
+    mockedGet.mockResolvedValueOnce(pat);
+
+    const result = await createEnterprisePATClient();
+
+    expect(getParameter).toBeCalledWith(PARAMETER_ENTERPRISE_PAT_NAME);
+    expect(result).toBeDefined();
+    expect(result.request.endpoint.DEFAULTS.baseUrl).toBe('https://api.github.com');
+  });
+
+  it('Reads PAT from SSM and creates Octokit client for GHES', async () => {
+    const ghesApiUrl = 'https://github.enterprise.notgoingtowork';
+    mockedGet.mockResolvedValueOnce(pat);
+
+    const result = await createEnterprisePATClient(ghesApiUrl);
+
+    expect(getParameter).toBeCalledWith(PARAMETER_ENTERPRISE_PAT_NAME);
+    expect(result).toBeDefined();
+    expect(result.request.endpoint.DEFAULTS.baseUrl).toBe(ghesApiUrl);
+  });
+
+  it('Throws when PARAMETER_ENTERPRISE_PAT_NAME is not set', async () => {
+    delete process.env.PARAMETER_ENTERPRISE_PAT_NAME;
+
+    await expect(createEnterprisePATClient()).rejects.toThrow(
+      'PARAMETER_ENTERPRISE_PAT_NAME environment variable is not set',
+    );
   });
 });

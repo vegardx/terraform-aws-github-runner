@@ -9,6 +9,11 @@ locals {
     webhook_secret = coalesce(var.github_app.webhook_secret_ssm, module.ssm.parameters.github_app_webhook_secret)
   }
 
+  enterprise_pat_parameters = var.enterprise_pat != null ? coalesce(
+    var.enterprise_pat.pat_ssm,
+    module.ssm.parameters.enterprise_pat,
+  ) : null
+
   default_runner_labels = distinct(concat(["self-hosted", var.runner_os, var.runner_architecture]))
   runner_labels         = (var.runner_disable_default_labels == false) ? sort(concat(local.default_runner_labels, var.runner_extra_labels)) : var.runner_extra_labels
 
@@ -88,11 +93,12 @@ resource "aws_sqs_queue" "queued_builds_dlq" {
 }
 
 module "ssm" {
-  source      = "./modules/ssm"
-  kms_key_arn = var.kms_key_arn
-  path_prefix = "${local.ssm_root_path}/${var.ssm_paths.app}"
-  github_app  = var.github_app
-  tags        = local.tags
+  source         = "./modules/ssm"
+  kms_key_arn    = var.kms_key_arn
+  path_prefix    = "${local.ssm_root_path}/${var.ssm_paths.app}"
+  github_app     = var.github_app
+  enterprise_pat = var.enterprise_pat
+  tags           = local.tags
 }
 
 module "webhook" {
@@ -183,6 +189,8 @@ module "runners" {
   sqs_build_queue                      = aws_sqs_queue.queued_builds
   github_app_parameters                = local.github_app_parameters
   enable_organization_runners          = var.enable_organization_runners
+  enable_enterprise_runners            = var.enable_enterprise_runners
+  enterprise_pat_parameters            = local.enterprise_pat_parameters
   enable_ephemeral_runners             = var.enable_ephemeral_runners
   enable_jit_config                    = var.enable_jit_config
   enable_job_queued_check              = var.enable_job_queued_check

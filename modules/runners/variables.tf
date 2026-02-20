@@ -800,3 +800,18 @@ variable "parameter_store_tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_enterprise_runners" {
+  description = "Enterprise slug. When set, runners register at enterprise level using a PAT. Takes priority over enable_organization_runners."
+  type        = string
+  default     = null
+}
+
+variable "enterprise_pat_parameters" {
+  description = "SSM parameter for enterprise PAT (name and ARN)."
+  type = object({
+    arn  = string
+    name = string
+  })
+  default = null
+}

@@ -60,6 +60,8 @@ module "pool" {
     tags                                 = local.tags
     lambda_tags                          = var.lambda_tags
     arn_ssm_parameters_path_config       = local.arn_ssm_parameters_path_config
+    enterprise_pat_parameters            = var.enterprise_pat_parameters
+    enable_enterprise_runners            = var.enable_enterprise_runners
   }
 
   aws_partition  = var.aws_partition

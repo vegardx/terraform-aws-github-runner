@@ -68,6 +68,11 @@ variable "config" {
     arn_ssm_parameters_path_config       = string
     lambda_tags                          = map(string)
     user_agent                           = string
+    enterprise_pat_parameters = optional(object({
+      arn  = string
+      name = string
+    }))
+    enable_enterprise_runners = optional(string)
   })
 }
 
