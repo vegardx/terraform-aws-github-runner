@@ -55,6 +55,9 @@ export async function scaleUpHandler(event: SQSEvent, context: Context): Promise
       batchItemFailures.push(...e.toBatchItemFailures(sqsMessages));
       logger.warn(`${e.detailedMessage} A retry will be attempted via SQS.`, { error: e });
     } else {
+      // Return all messages as batch failures so SQS retries them.
+      // IMPORTANT: Ensure a dead letter queue (redrive_build_queue) is
+      // configured to prevent infinite retries on persistent errors.
       logger.error(
         `Error processing batch (size: ${sqsMessages.length}): ${(e as Error).message}, returning batch for retry`,
         { error: e },
