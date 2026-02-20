@@ -23,6 +23,7 @@ const mockOctokit = {
     getJobForWorkflowRun: vi.fn(),
     generateRunnerJitconfigForOrg: vi.fn(),
     generateRunnerJitconfigForRepo: vi.fn(),
+    listWorkflowRunsForRepo: vi.fn(),
   },
   apps: {
     getOrgInstallation: vi.fn(),
@@ -1852,11 +1853,93 @@ describe('Retry mechanism tests', () => {
   });
 });
 
+describe('isJobQueued fallback to repo-level queued runs', () => {
+  const payload: scaleUpModule.ActionRequestMessage = {
+    id: 1,
+    eventType: 'workflow_job',
+    repositoryName: 'hello-world',
+    repositoryOwner: 'Codertocat',
+    installationId: 2,
+    repoOwnerType: 'Organization',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns true when specific job is queued', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'queued' },
+      headers: {},
+    });
+
+    const result = await scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(result).toBe(true);
+    expect(mockOctokit.actions.listWorkflowRunsForRepo).not.toHaveBeenCalled();
+  });
+
+  it('returns true when specific job is not queued but repo has other queued runs', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'in_progress' },
+      headers: {},
+    });
+    mockOctokit.actions.listWorkflowRunsForRepo.mockResolvedValue({
+      data: { total_count: 3, workflow_runs: [{}] },
+      headers: {},
+    });
+
+    const result = await scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(result).toBe(true);
+    expect(mockOctokit.actions.listWorkflowRunsForRepo).toHaveBeenCalledWith({
+      owner: 'Codertocat',
+      repo: 'hello-world',
+      status: 'queued',
+      per_page: 1,
+    });
+  });
+
+  it('returns false when specific job is not queued and no other queued runs', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'completed' },
+      headers: {},
+    });
+    mockOctokit.actions.listWorkflowRunsForRepo.mockResolvedValue({
+      data: { total_count: 0, workflow_runs: [] },
+      headers: {},
+    });
+
+    const result = await scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(result).toBe(false);
+  });
+
+  it('propagates error from listWorkflowRunsForRepo', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'in_progress' },
+      headers: {},
+    });
+    mockOctokit.actions.listWorkflowRunsForRepo.mockRejectedValue(new Error('API error'));
+
+    await expect(
+      scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, payload),
+    ).rejects.toThrow('API error');
+  });
+
+  it('throws for unsupported event types', async () => {
+    const checkRunPayload = { ...payload, eventType: 'check_run' as const };
+    await expect(
+      scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, checkRunPayload),
+    ).rejects.toThrow('Event check_run is not supported');
+  });
+});
+
 function defaultOctokitMockImpl() {
   mockOctokit.actions.getJobForWorkflowRun.mockImplementation(() => ({
     data: {
       status: 'queued',
     },
+  }));
+  mockOctokit.actions.listWorkflowRunsForRepo.mockImplementation(() => ({
+    data: { total_count: 0, workflow_runs: [] },
   }));
   mockOctokit.paginate.mockImplementation(() => [
     {
