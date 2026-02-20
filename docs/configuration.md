@@ -5,6 +5,7 @@
 To be able to support a number of use-cases, the module has quite a lot of configuration options. We tried to choose reasonable defaults. Several examples also show the main cases of how to configure the runners.
 
 - Org vs Repo level. You can configure the module to connect the runners in GitHub on an org level and share the runners in your org, or set the runners on repo level and the module will install the runner to the repo. There can be multiple repos but runners are not shared between repos.
+- Enterprise level runners. You can configure the module to register runners at the GitHub Enterprise level, shared across all organizations. Set `enable_enterprise_runners` to your enterprise slug and provide an `enterprise_pat` with the `manage_runners:enterprise` scope. Enterprise runners use a PAT instead of a GitHub App for authentication. See [Enterprise Runners](#enterprise-runners) below for details.
 - Multi-Runner module. This modules allows you to create multiple runner configurations with a single webhook and single GitHub App to simplify deployment of different types of runners. Check the detailed module [documentation](modules/public/multi-runner.md) for more information or checkout the [multi-runner example](examples/multi-runner.md).
 - Webhook mode, the module can be deployed in `direct` mode or `EventBridge` (Experimental) mode. The `direct` mode is the default and will directly distribute to SQS for the scale-up lambda. The `EventBridge` mode will publish the events to a eventbus, the rule then directs the received events to a dispatch lambda. The dispatch lambda will send the event to the SQS queue. The `EventBridge` mode is the default and allows to have more control over the events and potentially filter them. The `EventBridge` mode can be disabled, messages are sent directed to queues in that case. An example of what the `EventBridge` mode could be used for is building a data lake, build metrics, act on `workflow_job` job started events, etc.
 - Linux vs Windows. You can configure the OS types linux and win. Linux will be used by default.
@@ -398,3 +399,45 @@ resource "aws_iam_role_policy" "event_rule_firehose_role" {
   policy = data.aws_iam_policy_document.firehose_stream.json
 }
 ```
+
+## Enterprise Runners
+
+Enterprise-level runners are registered at the GitHub Enterprise level and shared across all organizations within the enterprise. This is useful for centralized runner management.
+
+### Prerequisites
+
+1. **Personal Access Token (PAT)** — A fine-grained or classic PAT with the `manage_runners:enterprise` scope, stored in AWS SSM Parameter Store.
+2. **Enterprise slug** — The URL slug of your GitHub Enterprise (e.g., `my-enterprise` from `github.com/enterprises/my-enterprise`).
+
+### Configuration
+
+```hcl
+module "github-runner" {
+  # ... other configuration ...
+
+  enable_enterprise_runners = "my-enterprise"
+
+  enterprise_pat = {
+    ssm_parameter_name = "/github-runner/enterprise-pat"
+  }
+}
+```
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `enable_enterprise_runners` | `string` | Enterprise slug. When set, runners register at enterprise level instead of org/repo. |
+| `enterprise_pat` | `object({ ssm_parameter_name = string })` | SSM parameter name containing the PAT. Required when `enable_enterprise_runners` is set. |
+
+### How It Works
+
+- When `enable_enterprise_runners` is set, the module uses the PAT (not the GitHub App) for all runner API calls.
+- Runners are registered via the enterprise-level GitHub API endpoints (`/enterprises/{slug}/actions/runners/...`).
+- The `enable_organization_runners` variable is still respected for webhook routing, but runner registration always happens at the enterprise level.
+- JIT configuration and registration tokens use enterprise-specific endpoints.
+- Scale-down and pool management also operate at the enterprise level.
+
+### Security Considerations
+
+- The enterprise PAT has broad access. Store it in SSM Parameter Store with encryption (`SecureString` type) and restrict IAM access to the Lambda execution roles.
+- Consider using a dedicated service account for the PAT rather than a personal account.
+- Rotate the PAT regularly and monitor its usage via GitHub audit logs.
