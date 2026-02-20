@@ -102,7 +102,9 @@ ${decryptedValue}`,
 
     // Assert
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
-    expect(mockedCreatAppAuth).toBeCalledWith({ ...authOptions });
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.objectContaining({ ...authOptions }),
+    );
   });
 
   it('Creates auth object for public GitHub', async () => {
@@ -128,7 +130,9 @@ ${decryptedValue}`,
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
-    expect(mockedCreatAppAuth).toBeCalledWith({ ...authOptions });
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.objectContaining({ ...authOptions }),
+    );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
   });
@@ -165,7 +169,9 @@ ${decryptedValue}`,
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
-    expect(mockedCreatAppAuth).toBeCalledWith(authOptions);
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.objectContaining(authOptions),
+    );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
   });
@@ -202,8 +208,55 @@ ${decryptedValue}`,
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
-    expect(mockedCreatAppAuth).toBeCalledWith(authOptions);
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.objectContaining(authOptions),
+    );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
+  });
+});
+
+describe('JWT with jti claim', () => {
+  const mockedCreatAppAuth = vi.mocked(createAppAuth);
+  const token = '123456';
+  const decryptedValue = 'decryptedValue';
+  const b64 = Buffer.from(decryptedValue, 'binary').toString('base64');
+
+  beforeEach(() => {
+    process.env.ENVIRONMENT = 'dev';
+  });
+
+  it('passes createJwt callback to createAppAuth', async () => {
+    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64);
+
+    const mockedAuth = vi.fn();
+    mockedAuth.mockResolvedValue({ token });
+    const mockWithHook = Object.assign(mockedAuth, { hook: vi.fn() });
+    mockedCreatAppAuth.mockReturnValue(mockWithHook);
+
+    await createGithubAppAuth(1);
+
+    expect(mockedCreatAppAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createJwt: expect.any(Function),
+      }),
+    );
+  });
+
+  it('createJwt callback is a function', async () => {
+    let capturedCreateJwt: ((appId: number, timeDifference: number) => Promise<string>) | undefined;
+    mockedCreatAppAuth.mockImplementation((options: any) => {
+      capturedCreateJwt = options.createJwt;
+      const mockedAuth = vi.fn();
+      mockedAuth.mockResolvedValue({ token });
+      return Object.assign(mockedAuth, { hook: vi.fn() });
+    });
+
+    mockedGet.mockResolvedValueOnce('1').mockResolvedValueOnce(b64);
+
+    await createGithubAppAuth(1);
+
+    expect(capturedCreateJwt).toBeDefined();
+    expect(typeof capturedCreateJwt).toBe('function');
   });
 });
