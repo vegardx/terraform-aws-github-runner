@@ -40,6 +40,10 @@ beforeEach(() => {
 const mockOctokit = {
   actions: {
     getJobForWorkflowRun: vi.fn(),
+    listWorkflowRunsForRepo: vi.fn().mockImplementation(() => ({
+      headers: {},
+      data: { total_count: 0, workflow_runs: [] },
+    })),
   },
 };
 
