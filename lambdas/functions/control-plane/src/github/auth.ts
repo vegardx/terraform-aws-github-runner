@@ -1,22 +1,17 @@
 import { createSign, randomUUID } from 'node:crypto';
-import { createAppAuth, type AppAuthentication, type InstallationAccessTokenAuthentication } from '@octokit/auth-app';
+import {
+  createAppAuth,
+  type AppAuthentication,
+  type InstallationAccessTokenAuthentication,
+} from '@octokit/auth-app';
+import type { StrategyOptions } from '@octokit/auth-app/dist-types/types';
 import type { OctokitOptions } from '@octokit/core';
-import type { RequestInterface } from '@octokit/types';
 
-// Define types that are not directly exported
 type AppAuthOptions = { type: 'app' };
 type InstallationAuthOptions = { type: 'installation'; installationId?: number };
-// Use a more generalized AuthInterface to match what createAppAuth returns
 type AuthInterface = {
   (options: AppAuthOptions): Promise<AppAuthentication>;
   (options: InstallationAuthOptions): Promise<InstallationAccessTokenAuthentication>;
-};
-type StrategyOptions = {
-  appId: number;
-  privateKey: string;
-  installationId?: number;
-  request?: RequestInterface;
-  createJwt?: (appId: number, timeDifference: number) => Promise<{ jwt: string; expiresAt: string }>;
 };
 import { request } from '@octokit/request';
 import { Octokit } from '@octokit/rest';
@@ -107,7 +102,6 @@ async function createAuth(installationId: number | undefined, ghesApiUrl: string
 
   let authOptions: StrategyOptions = {
     appId,
-    privateKey,
     createJwt: async (_appId: number, timeDifference: number) => {
       return signJwt(appId, privateKey, timeDifference);
     },

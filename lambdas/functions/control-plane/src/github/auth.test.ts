@@ -6,7 +6,7 @@ import { getParameter } from '@aws-github-runner/aws-ssm-util';
 import * as nock from 'nock';
 
 import { createGithubAppAuth, createOctokitClient } from './auth';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 
 type MockProxy<T> = T & {
   mockImplementation: (fn: (...args: T[]) => T) => MockProxy<T>;
@@ -78,14 +78,6 @@ describe('Test createGithubAppAuth', () => {
   });
 
   it('Creates auth object with line breaks in SSH key.', async () => {
-    // Arrange
-    const authOptions = {
-      appId: parseInt(GITHUB_APP_ID),
-      privateKey: `${decryptedValue}
-${decryptedValue}`,
-      installationId,
-    };
-
     const b64PrivateKeyWithLineBreaks = Buffer.from(decryptedValue + '\n' + decryptedValue, 'binary').toString(
       'base64',
     );
@@ -93,65 +85,59 @@ ${decryptedValue}`,
 
     const mockedAuth = vi.fn();
     mockedAuth.mockResolvedValue({ token });
-    // Add the required hook method to make it compatible with AuthInterface
     const mockWithHook = Object.assign(mockedAuth, { hook: vi.fn() });
     mockedCreatAppAuth.mockReturnValue(mockWithHook);
 
-    // Act
     await createGithubAppAuth(installationId);
 
-    // Assert
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
     expect(mockedCreatAppAuth).toBeCalledWith(
-      expect.objectContaining({ ...authOptions }),
+      expect.objectContaining({
+        appId: parseInt(GITHUB_APP_ID),
+        installationId,
+        createJwt: expect.any(Function),
+      }),
+    );
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.not.objectContaining({ privateKey: expect.anything() }),
     );
   });
 
   it('Creates auth object for public GitHub', async () => {
-    // Arrange
-    const authOptions = {
-      appId: parseInt(GITHUB_APP_ID),
-      privateKey: decryptedValue,
-      installationId,
-    };
     mockedGet.mockResolvedValueOnce(GITHUB_APP_ID).mockResolvedValueOnce(b64);
 
     const mockedAuth = vi.fn();
     mockedAuth.mockResolvedValue({ token });
-    // Add the required hook method to make it compatible with AuthInterface
     const mockWithHook = Object.assign(mockedAuth, { hook: vi.fn() });
     mockedCreatAppAuth.mockReturnValue(mockWithHook);
 
-    // Act
     const result = await createGithubAppAuth(installationId);
 
-    // Assert
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_ID_NAME);
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
     expect(mockedCreatAppAuth).toBeCalledWith(
-      expect.objectContaining({ ...authOptions }),
+      expect.objectContaining({
+        appId: parseInt(GITHUB_APP_ID),
+        installationId,
+        createJwt: expect.any(Function),
+      }),
+    );
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.not.objectContaining({ privateKey: expect.anything() }),
     );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
   });
 
   it('Creates auth object for Enterprise Server', async () => {
-    // Arrange
     const githubServerUrl = 'https://github.enterprise.notgoingtowork';
 
     mockedRequestInterface = mock<RequestInterface>();
     vi.spyOn(request, 'defaults').mockImplementation(
       () => mockedRequestInterface as RequestInterface<object & RequestParameters>,
     );
-
-    const authOptions = {
-      appId: parseInt(GITHUB_APP_ID),
-      privateKey: decryptedValue,
-      installationId,
-      request: mockedRequestInterface.mockImplementation(() => ({ baseUrl: githubServerUrl })),
-    };
 
     mockedGet.mockResolvedValueOnce(GITHUB_APP_ID).mockResolvedValueOnce(b64);
     const mockedAuth = vi.fn();
@@ -161,23 +147,28 @@ ${decryptedValue}`,
       return Object.assign(mockedAuth, { hook: vi.fn() });
     });
 
-    // Act
     const result = await createGithubAppAuth(installationId, githubServerUrl);
 
-    // Assert
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_ID_NAME);
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
     expect(mockedCreatAppAuth).toBeCalledWith(
-      expect.objectContaining(authOptions),
+      expect.objectContaining({
+        appId: parseInt(GITHUB_APP_ID),
+        installationId,
+        createJwt: expect.any(Function),
+        request: mockedRequestInterface,
+      }),
+    );
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.not.objectContaining({ privateKey: expect.anything() }),
     );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
   });
 
   it('Creates auth object for Enterprise Server with no ID', async () => {
-    // Arrange
     const githubServerUrl = 'https://github.enterprise.notgoingtowork';
 
     mockedRequestInterface = mock<RequestInterface>();
@@ -187,29 +178,27 @@ ${decryptedValue}`,
 
     const installationId = undefined;
 
-    const authOptions = {
-      appId: parseInt(GITHUB_APP_ID),
-      privateKey: decryptedValue,
-      request: mockedRequestInterface.mockImplementation(() => ({ baseUrl: githubServerUrl })),
-    };
-
     mockedGet.mockResolvedValueOnce(GITHUB_APP_ID).mockResolvedValueOnce(b64);
     const mockedAuth = vi.fn();
     mockedAuth.mockResolvedValue({ token });
-    // Add the required hook method to make it compatible with AuthInterface
     const mockWithHook = Object.assign(mockedAuth, { hook: vi.fn() });
     mockedCreatAppAuth.mockReturnValue(mockWithHook);
 
-    // Act
     const result = await createGithubAppAuth(installationId, githubServerUrl);
 
-    // Assert
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_ID_NAME);
     expect(getParameter).toBeCalledWith(PARAMETER_GITHUB_APP_KEY_BASE64_NAME);
 
     expect(mockedCreatAppAuth).toBeCalledTimes(1);
     expect(mockedCreatAppAuth).toBeCalledWith(
-      expect.objectContaining(authOptions),
+      expect.objectContaining({
+        appId: parseInt(GITHUB_APP_ID),
+        createJwt: expect.any(Function),
+        request: mockedRequestInterface,
+      }),
+    );
+    expect(mockedCreatAppAuth).toBeCalledWith(
+      expect.not.objectContaining({ privateKey: expect.anything() }),
     );
     expect(mockedAuth).toBeCalledWith({ type: authType });
     expect(result.token).toBe(token);
@@ -248,6 +237,9 @@ describe('JWT with jti claim', () => {
       expect.objectContaining({
         createJwt: expect.any(Function),
       }),
+    );
+    expect(mockedCreatAppAuth).toHaveBeenCalledWith(
+      expect.not.objectContaining({ privateKey: expect.anything() }),
     );
   });
 
