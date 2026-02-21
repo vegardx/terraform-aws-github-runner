@@ -172,21 +172,59 @@ export async function getInstallationId(
       ).data.id;
 }
 
-export async function isJobQueued(githubInstallationClient: Octokit, payload: ActionRequestMessage): Promise<boolean> {
-  let isQueued = false;
-  if (payload.eventType === 'workflow_job') {
-    const jobForWorkflowRun = await githubInstallationClient.actions.getJobForWorkflowRun({
-      job_id: payload.id,
-      owner: payload.repositoryOwner,
-      repo: payload.repositoryName,
-    });
-    metricGitHubAppRateLimit(jobForWorkflowRun.headers);
-    isQueued = jobForWorkflowRun.data.status === 'queued';
-    logger.debug(`The job ${payload.id} is${isQueued ? ' ' : 'not'} queued`);
-  } else {
+export async function isSpecificJobQueued(
+  githubInstallationClient: Octokit,
+  payload: ActionRequestMessage,
+): Promise<boolean> {
+  if (payload.eventType !== 'workflow_job') {
     throw Error(`Event ${payload.eventType} is not supported`);
   }
-  return isQueued;
+
+  const jobForWorkflowRun = await githubInstallationClient.actions.getJobForWorkflowRun({
+    job_id: payload.id,
+    owner: payload.repositoryOwner,
+    repo: payload.repositoryName,
+  });
+  metricGitHubAppRateLimit(jobForWorkflowRun.headers);
+
+  return jobForWorkflowRun.data.status === 'queued';
+}
+
+export async function isJobQueued(githubInstallationClient: Octokit, payload: ActionRequestMessage): Promise<boolean> {
+  if (await isSpecificJobQueued(githubInstallationClient, payload)) {
+    logger.debug(`Job ${payload.id} is queued`);
+    return true;
+  }
+
+  // The specific job is no longer queued. Due to label-based runner
+  // assignment, another queued job may have consumed the runner created
+  // for this message. Check if the repo has any queued runs that still
+  // need runners.
+  //
+  // NOTE: This is a coarse heuristic with two axes of imprecision:
+  // 1. Label-agnostic — it returns true if *any* workflow run in the repo
+  //    is queued, even if those runs require different runner labels.
+  // 2. Run-vs-job mismatch — listWorkflowRunsForRepo checks workflow *run*
+  //    status, not individual *job* status. A run can be "queued" while its
+  //    jobs are already assigned, or "in_progress" while some jobs still
+  //    await runners.
+  //
+  // This favours over-scaling over under-scaling, which is the less
+  // impactful failure mode.
+  logger.info(`Job ${payload.id} is not queued, checking for other queued workflow runs`);
+  const queuedRuns = await githubInstallationClient.actions.listWorkflowRunsForRepo({
+    owner: payload.repositoryOwner,
+    repo: payload.repositoryName,
+    status: 'queued',
+    per_page: 1,
+  });
+  metricGitHubAppRateLimit(queuedRuns.headers);
+
+  const hasQueuedWork = queuedRuns.data.total_count > 0;
+  logger.info(
+    `Repository ${payload.repositoryOwner}/${payload.repositoryName} has ${hasQueuedWork ? '' : 'no '}queued workflow runs`,
+  );
+  return hasQueuedWork;
 }
 
 async function getRunnerGroupId(githubRunnerConfig: CreateGitHubRunnerConfig, ghClient: Octokit): Promise<number> {
