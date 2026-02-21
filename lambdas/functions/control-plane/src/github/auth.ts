@@ -4,8 +4,8 @@ import {
   type AppAuthentication,
   type InstallationAccessTokenAuthentication,
 } from '@octokit/auth-app';
-import type { StrategyOptions } from '@octokit/auth-app/dist-types/types';
 import type { OctokitOptions } from '@octokit/core';
+import type { RequestInterface } from '@octokit/types';
 
 type AppAuthOptions = { type: 'app' };
 type InstallationAuthOptions = { type: 'installation'; installationId?: number };
@@ -13,6 +13,24 @@ type AuthInterface = {
   (options: AppAuthOptions): Promise<AppAuthentication>;
   (options: InstallationAuthOptions): Promise<InstallationAccessTokenAuthentication>;
 };
+
+// Local StrategyOptions matching @octokit/auth-app's union type.
+// Cannot import from '@octokit/auth-app/dist-types/types' because
+// ncc fails to resolve internal dist paths.
+type StrategyOptions = {
+  appId: number | string;
+  installationId?: number | string;
+  request?: RequestInterface;
+} & (
+  | { privateKey: string; createJwt?: never }
+  | {
+      privateKey?: never;
+      createJwt: (
+        appId: number | string,
+        timeDifference?: number,
+      ) => Promise<{ jwt: string; expiresAt: string }>;
+    }
+);
 import { request } from '@octokit/request';
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
@@ -102,7 +120,7 @@ async function createAuth(installationId: number | undefined, ghesApiUrl: string
 
   let authOptions: StrategyOptions = {
     appId,
-    createJwt: async (_appId: number, timeDifference: number) => {
+    createJwt: async (_appId: number | string, timeDifference = 0) => {
       return signJwt(appId, privateKey, timeDifference);
     },
   };
