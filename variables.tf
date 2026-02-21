@@ -31,6 +31,27 @@ variable "enable_organization_runners" {
   default     = false
 }
 
+variable "enable_enterprise_runners" {
+  description = "Enterprise slug. When set, runners register at enterprise level using a PAT. Takes priority over enable_organization_runners."
+  type        = string
+  default     = null
+}
+
+variable "enterprise_pat" {
+  description = "SSM parameter for the enterprise PAT with manage_runners:enterprise scope. Create the SSM parameter yourself and provide its ARN and name here."
+  sensitive   = true
+  type = object({
+    arn  = string
+    name = string
+  })
+  default = null
+
+  validation {
+    condition     = var.enterprise_pat != null || var.enable_enterprise_runners == null
+    error_message = "enterprise_pat is required when enable_enterprise_runners is set."
+  }
+}
+
 variable "github_app" {
   description = <<EOF
   GitHub app parameters, see your github app.

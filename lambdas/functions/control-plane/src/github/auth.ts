@@ -88,6 +88,15 @@ export async function createGithubInstallationAuth(
   return auth(installationAuthOptions);
 }
 
+export async function createEnterprisePATClient(ghesApiUrl = ''): Promise<Octokit> {
+  const paramName = process.env.PARAMETER_ENTERPRISE_PAT_NAME;
+  if (!paramName) {
+    throw new Error('PARAMETER_ENTERPRISE_PAT_NAME environment variable is not set');
+  }
+  const pat = await getParameter(paramName);
+  return createOctokitClient(pat, ghesApiUrl);
+}
+
 async function createAuth(installationId: number | undefined, ghesApiUrl: string): Promise<AuthInterface> {
   const appId = parseInt(await getParameter(process.env.PARAMETER_GITHUB_APP_ID_NAME));
   const privateKey = Buffer.from(

@@ -3,8 +3,8 @@ import { createChildLogger } from '@aws-github-runner/aws-powertools-util';
 import yn from 'yn';
 
 import { bootTimeExceeded, listEC2Runners } from '../aws/runners';
-import { RunnerList } from '../aws/runners.d';
-import { createGithubAppAuth, createGithubInstallationAuth, createOctokitClient } from '../github/auth';
+import { RunnerList, RunnerType } from '../aws/runners.d';
+import { createGithubAppAuth, createGithubInstallationAuth, createOctokitClient, createEnterprisePATClient } from '../github/auth';
 import { createRunners, getGitHubEnterpriseApiUrl } from '../scale-runners/scale-up';
 import { validateSsmParameterStoreTags } from '../scale-runners/scale-up';
 
@@ -36,7 +36,6 @@ export async function adjust(event: PoolEvent): Promise<void> {
   const launchTemplateName = process.env.LAUNCH_TEMPLATE_NAME;
   const instanceMaxSpotPrice = process.env.INSTANCE_MAX_SPOT_PRICE;
   const instanceAllocationStrategy = process.env.INSTANCE_ALLOCATION_STRATEGY || 'lowest-price'; // same as AWS default
-  const runnerOwner = process.env.RUNNER_OWNER;
   const amiIdSsmParameterName = process.env.AMI_ID_SSM_PARAMETER_NAME;
   const tracingEnabled = yn(process.env.POWERTOOLS_TRACE_ENABLED, { default: false });
   const onDemandFailoverOnError = process.env.ENABLE_ON_DEMAND_FAILOVER_FOR_ERRORS
@@ -48,24 +47,32 @@ export async function adjust(event: PoolEvent): Promise<void> {
       : [];
   const scaleErrors = JSON.parse(process.env.SCALE_ERRORS) as [string];
 
+  const enterpriseSlug = process.env.ENABLE_ENTERPRISE_RUNNERS || '';
+  const runnerType: RunnerType = enterpriseSlug ? 'Enterprise' : 'Org';
+  const runnerOwner = enterpriseSlug || process.env.RUNNER_OWNER;
+
   const { ghesApiUrl, ghesBaseUrl } = getGitHubEnterpriseApiUrl();
 
-  const installationId = await getInstallationId(ghesApiUrl, runnerOwner);
-  const ghAuth = await createGithubInstallationAuth(installationId, ghesApiUrl);
-  const githubInstallationClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
+  let githubInstallationClient: Octokit;
+  if (runnerType === 'Enterprise') {
+    githubInstallationClient = await createEnterprisePATClient(ghesApiUrl);
+  } else {
+    const installationId = await getInstallationId(ghesApiUrl, runnerOwner);
+    const ghAuth = await createGithubInstallationAuth(installationId, ghesApiUrl);
+    githubInstallationClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
+  }
 
-  // Get statuses of runners registered in GitHub
   const runnerStatusses = await getGitHubRegisteredRunnnerStatusses(
     githubInstallationClient,
     runnerOwner,
     runnerNamePrefix,
+    runnerType,
   );
 
-  // Look up the managed ec2 runners in AWS, but running does not mean idle
   const ec2runners = await listEC2Runners({
     environment,
     runnerOwner,
-    runnerType: 'Org',
+    runnerType,
     statuses: ['running'],
   });
 
@@ -83,7 +90,7 @@ export async function adjust(event: PoolEvent): Promise<void> {
         runnerGroup,
         runnerOwner,
         runnerNamePrefix,
-        runnerType: 'Org',
+        runnerType: runnerType,
         disableAutoUpdate: disableAutoUpdate,
         ssmTokenPath,
         ssmConfigPath,
@@ -151,11 +158,17 @@ async function getGitHubRegisteredRunnnerStatusses(
   ghClient: Octokit,
   runnerOwner: string,
   runnerNamePrefix: string,
+  runnerType: RunnerType,
 ): Promise<Map<string, RunnerStatus>> {
-  const runners = await ghClient.paginate(ghClient.actions.listSelfHostedRunnersForOrg, {
-    org: runnerOwner,
-    per_page: 100,
-  });
+  const runners = runnerType === 'Enterprise'
+    ? (await ghClient.paginate('GET /enterprises/{enterprise}/actions/runners', {
+        enterprise: runnerOwner,
+        per_page: 100,
+      })) as { name: string; busy: boolean; status: string }[]
+    : await ghClient.paginate(ghClient.actions.listSelfHostedRunnersForOrg, {
+        org: runnerOwner,
+        per_page: 100,
+      });
   const runnerStatus = new Map<string, RunnerStatus>();
   for (const runner of runners) {
     runner.name = runnerNamePrefix ? runner.name.replace(runnerNamePrefix, '') : runner.name;

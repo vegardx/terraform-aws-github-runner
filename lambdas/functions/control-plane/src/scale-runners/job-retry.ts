@@ -3,6 +3,7 @@ import { publishMessage } from '../aws/sqs';
 import { ActionRequestMessage, ActionRequestMessageRetry, isSpecificJobQueued, getGitHubEnterpriseApiUrl } from './scale-up';
 import { getOctokit } from '../github/octokit';
 import { MetricUnit } from '@aws-lambda-powertools/metrics';
+import { Octokit } from '@octokit/rest';
 import yn from 'yn';
 
 interface JobRetryConfig {
@@ -38,8 +39,11 @@ export async function publishRetryMessage(payload: ActionRequestMessage): Promis
 
 export async function checkAndRetryJob(payload: ActionRequestMessageRetry): Promise<void> {
   const enableOrgLevel = yn(process.env.ENABLE_ORGANIZATION_RUNNERS, { default: true });
-  const runnerType = enableOrgLevel ? 'Org' : 'Repo';
-  const runnerOwner = enableOrgLevel ? payload.repositoryOwner : `${payload.repositoryOwner}/${payload.repositoryName}`;
+  const enterpriseSlug = process.env.ENABLE_ENTERPRISE_RUNNERS || '';
+  const runnerType = enterpriseSlug ? 'Enterprise' : enableOrgLevel ? 'Org' : 'Repo';
+  const runnerOwner = enterpriseSlug
+    ? enterpriseSlug
+    : enableOrgLevel ? payload.repositoryOwner : `${payload.repositoryOwner}/${payload.repositoryName}`;
   const runnerNamePrefix = process.env.RUNNER_NAME_PREFIX ?? '';
   const jobQueueUrl = process.env.JOB_QUEUE_SCALE_UP_URL ?? '';
   const enableMetrics = yn(process.env.ENABLE_METRIC_JOB_RETRY, { default: false });
@@ -60,7 +64,13 @@ export async function checkAndRetryJob(payload: ActionRequestMessageRetry): Prom
   logger.info(`Received event`);
 
   const { ghesApiUrl } = getGitHubEnterpriseApiUrl();
-  const ghClient = await getOctokit(ghesApiUrl, enableOrgLevel, payload);
+  let ghClient: Octokit;
+  if (enterpriseSlug) {
+    const { createEnterprisePATClient } = await import('../github/auth');
+    ghClient = await createEnterprisePATClient(ghesApiUrl);
+  } else {
+    ghClient = await getOctokit(ghesApiUrl, enableOrgLevel, payload);
+  }
 
   // check job is still queued
   if (await isSpecificJobQueued(ghClient, payload)) {

@@ -1,6 +1,6 @@
 import { DefaultTargetCapacityType, SpotAllocationStrategy } from '@aws-sdk/client-ec2';
 
-export type RunnerType = 'Org' | 'Repo';
+export type RunnerType = 'Org' | 'Repo' | 'Enterprise';
 
 export interface RunnerList {
   instanceId: string;

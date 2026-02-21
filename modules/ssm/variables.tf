@@ -50,3 +50,13 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enterprise_pat" {
+  description = "SSM parameter for the enterprise PAT with manage_runners:enterprise scope. Create the SSM parameter yourself and provide its ARN and name here."
+  sensitive   = true
+  type = object({
+    arn  = string
+    name = string
+  })
+  default = null
+}

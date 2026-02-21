@@ -29,6 +29,7 @@ const mockOctokit = {
     getOrgInstallation: vi.fn(),
     getRepoInstallation: vi.fn(),
   },
+  request: vi.fn(),
 };
 
 const mockCreateRunner = vi.mocked(createRunner);
@@ -53,6 +54,7 @@ vi.mock('./../github/auth', async () => ({
   createGithubAppAuth: vi.fn(),
   createGithubInstallationAuth: vi.fn(),
   createOctokitClient: vi.fn(),
+  createEnterprisePATClient: vi.fn(),
 }));
 
 vi.mock('@aws-github-runner/aws-ssm-util', async () => {
@@ -79,6 +81,7 @@ const RUNNER_TYPES: RunnerType[] = ['ephemeral', 'non-ephemeral'];
 const mockedAppAuth = vi.mocked(ghAuth.createGithubAppAuth);
 const mockedInstallationAuth = vi.mocked(ghAuth.createGithubInstallationAuth);
 const mockCreateClient = vi.mocked(ghAuth.createOctokitClient);
+const mockCreateEnterprisePATClient = vi.mocked(ghAuth.createEnterprisePATClient);
 
 const TEST_DATA_SINGLE: scaleUpModule.ActionRequestMessageSQS = {
   id: 1,
@@ -2048,6 +2051,21 @@ function defaultOctokitMockImpl() {
   mockOctokit.actions.createRegistrationTokenForRepo.mockImplementation(() => mockTokenReturnValue);
   mockOctokit.apps.getOrgInstallation.mockImplementation(() => mockInstallationIdReturnValueOrgs);
   mockOctokit.apps.getRepoInstallation.mockImplementation(() => mockInstallationIdReturnValueRepos);
+  mockOctokit.request.mockImplementation((route: string) => {
+    if (route.includes('registration-token')) {
+      return mockTokenReturnValue;
+    }
+    if (route.includes('generate-jit-config')) {
+      return {
+        headers: {},
+        data: {
+          runner: { id: 9876543210 },
+          encoded_jit_config: 'TEST_JIT_CONFIG_ENTERPRISE',
+        },
+      };
+    }
+    return { data: {} };
+  });
 }
 
 function defaultSSMGetParameterMockImpl() {
@@ -2061,3 +2079,99 @@ function defaultSSMGetParameterMockImpl() {
     }
   });
 }
+
+describe('Enterprise runner mode', () => {
+  const ENTERPRISE_SLUG = 'my-enterprise';
+
+  beforeEach(() => {
+    process.env.ENABLE_ENTERPRISE_RUNNERS = ENTERPRISE_SLUG;
+    process.env.ENABLE_ORGANIZATION_RUNNERS = 'true';
+    process.env.ENABLE_EPHEMERAL_RUNNERS = 'true';
+    process.env.ENABLE_JIT_CONFIG = 'true';
+    process.env.RUNNER_GROUP_NAME = 'Default';
+    process.env.SSM_TOKEN_PATH = '/token';
+    process.env.SSM_CONFIG_PATH = '/config';
+    mockCreateEnterprisePATClient.mockResolvedValue(mockOctokit as unknown as Octokit);
+  });
+
+  it('uses enterprise PAT client instead of installation client', async () => {
+    const result = await scaleUpModule.scaleUp(TEST_DATA);
+
+    expect(mockCreateEnterprisePATClient).toHaveBeenCalled();
+    expect(mockedInstallationAuth).not.toHaveBeenCalled();
+  });
+
+  it('uses enterprise registration token endpoint', async () => {
+    process.env.ENABLE_JIT_CONFIG = 'false';
+    process.env.ENABLE_EPHEMERAL_RUNNERS = 'false';
+
+    await scaleUpModule.scaleUp(TEST_DATA);
+
+    expect(mockOctokit.request).toHaveBeenCalledWith(
+      'POST /enterprises/{enterprise}/actions/runners/registration-token',
+      { enterprise: ENTERPRISE_SLUG },
+    );
+    expect(mockOctokit.actions.createRegistrationTokenForOrg).not.toHaveBeenCalled();
+  });
+
+  it('uses enterprise JIT config endpoint', async () => {
+    await scaleUpModule.scaleUp(TEST_DATA);
+
+    expect(mockOctokit.request).toHaveBeenCalledWith(
+      'POST /enterprises/{enterprise}/actions/runners/generate-jit-config',
+      expect.objectContaining({
+        enterprise: ENTERPRISE_SLUG,
+        name: expect.any(String),
+        runner_group_id: expect.any(Number),
+        labels: expect.any(Array),
+      }),
+    );
+  });
+
+  it('generates correct runner service config URL for enterprise', async () => {
+    process.env.ENABLE_JIT_CONFIG = 'false';
+    process.env.ENABLE_EPHEMERAL_RUNNERS = 'false';
+
+    await scaleUpModule.scaleUp(TEST_DATA);
+
+    // The registration token endpoint should use the enterprise path
+    expect(mockOctokit.request).toHaveBeenCalledWith(
+      'POST /enterprises/{enterprise}/actions/runners/registration-token',
+      { enterprise: ENTERPRISE_SLUG },
+    );
+
+    // SSM parameter should contain the enterprise URL path
+    expect(mockSSMClient).toHaveReceivedCommandWith(PutParameterCommand, {
+      Value: expect.stringContaining(`enterprises/${ENTERPRISE_SLUG}`),
+    });
+  });
+
+  it('allows non-Organization repo owner types in enterprise mode', async () => {
+    const userPayload: scaleUpModule.ActionRequestMessageSQS[] = [
+      {
+        ...TEST_DATA_SINGLE,
+        repoOwnerType: 'User',
+        messageId: 'user-msg',
+      },
+    ];
+
+    const result = await scaleUpModule.scaleUp(userPayload);
+
+    // Should NOT be rejected — enterprise mode accepts all repo owner types
+    expect(result).not.toContain('user-msg');
+  });
+
+  it('groups all messages under enterprise slug key', async () => {
+    const multiOrgPayloads: scaleUpModule.ActionRequestMessageSQS[] = [
+      { ...TEST_DATA_SINGLE, repositoryOwner: 'org-a', messageId: 'msg-1' },
+      { ...TEST_DATA_SINGLE, repositoryOwner: 'org-b', messageId: 'msg-2' },
+    ];
+
+    mockCreateRunner.mockResolvedValue(['i-1', 'i-2']);
+
+    await scaleUpModule.scaleUp(multiOrgPayloads);
+
+    // Only one enterprise PAT client created, not one per org
+    expect(mockCreateEnterprisePATClient).toHaveBeenCalledTimes(1);
+  });
+});
