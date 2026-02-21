@@ -103,6 +103,12 @@ module "runners" {
 
   runner_iam_role_managed_policy_arns = each.value.runner_config.runner_iam_role_managed_policy_arns
 
+  enable_enterprise_runners = var.enable_enterprise_runners
+  enterprise_pat_parameters = var.enterprise_pat != null ? {
+    name = var.enterprise_pat.name
+    arn  = var.enterprise_pat.arn
+  } : null
+
   ghes_url        = var.ghes_url
   ghes_ssl_verify = var.ghes_ssl_verify
   user_agent      = var.user_agent
