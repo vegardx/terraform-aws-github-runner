@@ -172,7 +172,10 @@ export async function getInstallationId(
       ).data.id;
 }
 
-export async function isJobQueued(githubInstallationClient: Octokit, payload: ActionRequestMessage): Promise<boolean> {
+export async function isSpecificJobQueued(
+  githubInstallationClient: Octokit,
+  payload: ActionRequestMessage,
+): Promise<boolean> {
   if (payload.eventType !== 'workflow_job') {
     throw Error(`Event ${payload.eventType} is not supported`);
   }
@@ -184,7 +187,11 @@ export async function isJobQueued(githubInstallationClient: Octokit, payload: Ac
   });
   metricGitHubAppRateLimit(jobForWorkflowRun.headers);
 
-  if (jobForWorkflowRun.data.status === 'queued') {
+  return jobForWorkflowRun.data.status === 'queued';
+}
+
+export async function isJobQueued(githubInstallationClient: Octokit, payload: ActionRequestMessage): Promise<boolean> {
+  if (await isSpecificJobQueued(githubInstallationClient, payload)) {
     logger.debug(`Job ${payload.id} is queued`);
     return true;
   }
@@ -194,11 +201,16 @@ export async function isJobQueued(githubInstallationClient: Octokit, payload: Ac
   // for this message. Check if the repo has any queued runs that still
   // need runners.
   //
-  // NOTE: This check is label-agnostic — it returns true if *any* workflow
-  // run in the repo is queued, even if those runs require different runner
-  // labels. This can cause minor over-scaling in repos with multiple
-  // runner label sets, but avoids under-scaling (missed jobs) which is
-  // the more impactful failure mode.
+  // NOTE: This is a coarse heuristic with two axes of imprecision:
+  // 1. Label-agnostic — it returns true if *any* workflow run in the repo
+  //    is queued, even if those runs require different runner labels.
+  // 2. Run-vs-job mismatch — listWorkflowRunsForRepo checks workflow *run*
+  //    status, not individual *job* status. A run can be "queued" while its
+  //    jobs are already assigned, or "in_progress" while some jobs still
+  //    await runners.
+  //
+  // This favours over-scaling over under-scaling, which is the less
+  // impactful failure mode.
   logger.info(`Job ${payload.id} is not queued, checking for other queued workflow runs`);
   const queuedRuns = await githubInstallationClient.actions.listWorkflowRunsForRepo({
     owner: payload.repositoryOwner,

@@ -1,6 +1,6 @@
 import { addPersistentContextToChildLogger, createSingleMetric, logger } from '@aws-github-runner/aws-powertools-util';
 import { publishMessage } from '../aws/sqs';
-import { ActionRequestMessage, ActionRequestMessageRetry, isJobQueued, getGitHubEnterpriseApiUrl } from './scale-up';
+import { ActionRequestMessage, ActionRequestMessageRetry, isSpecificJobQueued, getGitHubEnterpriseApiUrl } from './scale-up';
 import { getOctokit } from '../github/octokit';
 import { MetricUnit } from '@aws-lambda-powertools/metrics';
 import yn from 'yn';
@@ -63,7 +63,7 @@ export async function checkAndRetryJob(payload: ActionRequestMessageRetry): Prom
   const ghClient = await getOctokit(ghesApiUrl, enableOrgLevel, payload);
 
   // check job is still queued
-  if (await isJobQueued(ghClient, payload)) {
+  if (await isSpecificJobQueued(ghClient, payload)) {
     await publishMessage(JSON.stringify(payload), jobQueueUrl);
     createMetric(enableMetrics, environment, payload);
     logger.info(`Job is still queued, message published to build queue and will be handled by scale-up.`, { payload });

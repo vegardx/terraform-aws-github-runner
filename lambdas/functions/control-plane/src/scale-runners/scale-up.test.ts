@@ -1930,6 +1930,69 @@ describe('isJobQueued fallback to repo-level queued runs', () => {
       scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, checkRunPayload),
     ).rejects.toThrow('Event check_run is not supported');
   });
+
+  it('propagates error from getJobForWorkflowRun without falling back', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockRejectedValue(
+      new Error('Not Found'),
+    );
+
+    await expect(
+      scaleUpModule.isJobQueued(mockOctokit as unknown as Octokit, payload),
+    ).rejects.toThrow('Not Found');
+    expect(mockOctokit.actions.listWorkflowRunsForRepo).not.toHaveBeenCalled();
+  });
+});
+
+describe('isSpecificJobQueued', () => {
+  const payload: scaleUpModule.ActionRequestMessage = {
+    id: 1,
+    eventType: 'workflow_job',
+    repositoryName: 'hello-world',
+    repositoryOwner: 'Codertocat',
+    installationId: 2,
+    repoOwnerType: 'Organization',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns true when specific job is queued', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'queued' },
+      headers: {},
+    });
+
+    const result = await scaleUpModule.isSpecificJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(result).toBe(true);
+  });
+
+  it('returns false when specific job is not queued', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'in_progress' },
+      headers: {},
+    });
+
+    const result = await scaleUpModule.isSpecificJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(result).toBe(false);
+  });
+
+  it('does not fall back to repo-level check', async () => {
+    mockOctokit.actions.getJobForWorkflowRun.mockResolvedValue({
+      data: { status: 'completed' },
+      headers: {},
+    });
+
+    await scaleUpModule.isSpecificJobQueued(mockOctokit as unknown as Octokit, payload);
+    expect(mockOctokit.actions.listWorkflowRunsForRepo).not.toHaveBeenCalled();
+  });
+
+  it('throws for unsupported event types', async () => {
+    const checkRunPayload = { ...payload, eventType: 'check_run' as const };
+    await expect(
+      scaleUpModule.isSpecificJobQueued(mockOctokit as unknown as Octokit, checkRunPayload),
+    ).rejects.toThrow('Event check_run is not supported');
+  });
 });
 
 function defaultOctokitMockImpl() {
