@@ -13,8 +13,8 @@ output "parameters" {
       arn  = var.github_app.webhook_secret_ssm != null ? var.github_app.webhook_secret_ssm.arn : aws_ssm_parameter.github_app_webhook_secret[0].arn
     }
     enterprise_pat = var.enterprise_pat != null ? {
-      name = var.enterprise_pat.pat_ssm != null ? var.enterprise_pat.pat_ssm.name : aws_ssm_parameter.enterprise_pat[0].name
-      arn  = var.enterprise_pat.pat_ssm != null ? var.enterprise_pat.pat_ssm.arn : aws_ssm_parameter.enterprise_pat[0].arn
+      name = var.enterprise_pat.name
+      arn  = var.enterprise_pat.arn
     } : null
   }
 }

@@ -38,13 +38,11 @@ variable "enable_enterprise_runners" {
 }
 
 variable "enterprise_pat" {
-  description = "Enterprise PAT with manage_runners:enterprise scope. Provide the value directly or reference an existing SSM parameter."
+  description = "SSM parameter for the enterprise PAT with manage_runners:enterprise scope. Create the SSM parameter yourself and provide its ARN and name here."
+  sensitive   = true
   type = object({
-    pat = optional(string)
-    pat_ssm = optional(object({
-      arn  = string
-      name = string
-    }))
+    arn  = string
+    name = string
   })
   default = null
 

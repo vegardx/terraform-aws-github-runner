@@ -26,6 +26,7 @@ locals {
     github_app_parameters                                          = var.github_app_parameters
     enable_organization_runners                                    = var.enable_organization_runners
     enable_enterprise_runners                                      = var.enable_enterprise_runners
+    enterprise_pat_parameters                                      = var.enterprise_pat_parameters
     sqs_build_queue                                                = var.sqs_build_queue
     ghes_url                                                       = var.ghes_url
     lambda_event_source_mapping_batch_size                         = var.lambda_event_source_mapping_batch_size

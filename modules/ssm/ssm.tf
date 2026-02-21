@@ -24,12 +24,3 @@ resource "aws_ssm_parameter" "github_app_webhook_secret" {
   key_id = local.kms_key_arn
   tags   = var.tags
 }
-
-resource "aws_ssm_parameter" "enterprise_pat" {
-  count  = var.enterprise_pat != null && var.enterprise_pat.pat_ssm == null ? 1 : 0
-  name   = "${var.path_prefix}/enterprise_pat"
-  type   = "SecureString"
-  value  = var.enterprise_pat.pat
-  key_id = local.kms_key_arn
-  tags   = var.tags
-}

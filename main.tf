@@ -9,10 +9,10 @@ locals {
     webhook_secret = coalesce(var.github_app.webhook_secret_ssm, module.ssm.parameters.github_app_webhook_secret)
   }
 
-  enterprise_pat_parameters = var.enterprise_pat != null ? coalesce(
-    var.enterprise_pat.pat_ssm,
-    module.ssm.parameters.enterprise_pat,
-  ) : null
+  enterprise_pat_parameters = var.enterprise_pat != null ? {
+    name = var.enterprise_pat.name
+    arn  = var.enterprise_pat.arn
+  } : null
 
   default_runner_labels = distinct(concat(["self-hosted", var.runner_os, var.runner_architecture]))
   runner_labels         = (var.runner_disable_default_labels == false) ? sort(concat(local.default_runner_labels, var.runner_extra_labels)) : var.runner_extra_labels

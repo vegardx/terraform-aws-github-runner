@@ -41,6 +41,10 @@ variable "config" {
     architecture                = optional(string, null)
     enable_organization_runners = bool
     enable_enterprise_runners   = optional(string, null)
+    enterprise_pat_parameters = optional(object({
+      arn  = string
+      name = string
+    }), null)
     environment_variables       = optional(map(string), {})
     ghes_url                    = optional(string, null)
     user_agent                  = optional(string, null)

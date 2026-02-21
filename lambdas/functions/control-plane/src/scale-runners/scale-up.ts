@@ -318,12 +318,13 @@ export async function scaleUp(payloads: ActionRequestMessageSQS[]): Promise<stri
 
   const { ghesApiUrl, ghesBaseUrl } = getGitHubEnterpriseApiUrl();
 
-  const ghAuth = await createGithubAppAuth(undefined, ghesApiUrl);
-  const githubAppClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
-
+  let githubAppClient: Octokit | undefined;
   let enterprisePATClient: Octokit | undefined;
   if (runnerType === 'Enterprise') {
     enterprisePATClient = await createEnterprisePATClient(ghesApiUrl);
+  } else {
+    const ghAuth = await createGithubAppAuth(undefined, ghesApiUrl);
+    githubAppClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
   }
 
   type MessagesWithClient = {
@@ -369,7 +370,7 @@ export async function scaleUp(payloads: ActionRequestMessageSQS[]): Promise<stri
       if (runnerType === 'Enterprise') {
         githubInstallationClient = enterprisePATClient!;
       } else {
-        const installationId = await getInstallationId(githubAppClient, enableOrgLevel, payload);
+        const installationId = await getInstallationId(githubAppClient!, enableOrgLevel, payload);
         const ghAuth = await createGithubInstallationAuth(installationId, ghesApiUrl);
         githubInstallationClient = await createOctokitClient(ghAuth.token, ghesApiUrl);
       }

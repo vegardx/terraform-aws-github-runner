@@ -5,6 +5,7 @@ locals {
   environment_variables = {
     ENABLE_ORGANIZATION_RUNNERS          = var.config.enable_organization_runners
     ENABLE_ENTERPRISE_RUNNERS            = var.config.enable_enterprise_runners != null ? var.config.enable_enterprise_runners : ""
+    PARAMETER_ENTERPRISE_PAT_NAME        = var.config.enterprise_pat_parameters != null ? var.config.enterprise_pat_parameters.name : ""
     ENABLE_METRIC_JOB_RETRY              = var.config.metrics.enable && var.config.metrics.metric.enable_job_retry
     ENABLE_METRIC_GITHUB_APP_RATE_LIMIT  = var.config.metrics.enable && var.config.metrics.metric.enable_github_app_rate_limit
     GHES_URL                             = var.config.ghes_url
@@ -68,6 +69,7 @@ resource "aws_iam_role_policy" "job_retry" {
     sqs_job_retry_queue_arn   = aws_sqs_queue.job_retry_check_queue.arn
     github_app_id_arn         = var.config.github_app_parameters.id.arn
     github_app_key_base64_arn = var.config.github_app_parameters.key_base64.arn
+    enterprise_pat_arn        = var.config.enterprise_pat_parameters != null ? var.config.enterprise_pat_parameters.arn : ""
   })
 }
 

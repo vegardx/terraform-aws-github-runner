@@ -418,7 +418,8 @@ module "github-runner" {
   enable_enterprise_runners = "my-enterprise"
 
   enterprise_pat = {
-    ssm_parameter_name = "/github-runner/enterprise-pat"
+    arn  = "arn:aws:ssm:us-east-1:123456789:parameter/github-runner/enterprise-pat"
+    name = "/github-runner/enterprise-pat"
   }
 }
 ```
@@ -426,7 +427,7 @@ module "github-runner" {
 | Variable | Type | Description |
 |----------|------|-------------|
 | `enable_enterprise_runners` | `string` | Enterprise slug. When set, runners register at enterprise level instead of org/repo. |
-| `enterprise_pat` | `object({ ssm_parameter_name = string })` | SSM parameter name containing the PAT. Required when `enable_enterprise_runners` is set. |
+| `enterprise_pat` | `object({ arn = string, name = string })` | SSM parameter containing the enterprise PAT. Required when `enable_enterprise_runners` is set. |
 
 ### How It Works
 
