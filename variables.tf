@@ -694,7 +694,7 @@ variable "lambda_principals" {
 }
 
 variable "redrive_build_queue" {
-  description = "Set options to attach (optional) a dead letter queue to the build queue, the queue between the webhook and the scale up lambda. You have the following options. 1. Disable by setting `enabled` to false. 2. Enable by setting `enabled` to `true`, `maxReceiveCount` to a number of max retries."
+  description = "Set options to attach (optional) a dead letter queue to the build queue, the queue between the webhook and the scale up lambda. You have the following options. 1. Disable by setting `enabled` to false. 2. Enable by setting `enabled` to `true`, `maxReceiveCount` to a number of max retries. WARNING: When disabled, unhandled errors in the scale-up lambda cause messages to retry until the SQS retention period (`job_queue_retention_in_seconds`) expires. Enable with an appropriate maxReceiveCount to bound retry behavior."
   type = object({
     enabled         = bool
     maxReceiveCount = number
